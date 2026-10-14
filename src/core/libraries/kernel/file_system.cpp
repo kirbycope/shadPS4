@@ -162,6 +162,15 @@ s32 PS4_SYSV_ABI open(const char* raw_path, s32 flags, u16 mode) {
         }
 
         if (!exists) {
+            if (!std::filesystem::is_directory(file->m_host_name.parent_path())) {
+                // A missing parent directory is reported before a read-only one, as FreeBSD
+                // does. Games fall back to another path on ENOENT but not on EROFS.
+                h->DeleteHandle(handle);
+                *__Error() = POSIX_ENOENT;
+                LOG_ERROR(Kernel_Fs, "Creating {} failed, parent directory does not exist",
+                          raw_path);
+                return -1;
+            }
             if (read_only) {
                 // Can't create files in a read only directory
                 h->DeleteHandle(handle);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <limits>
+#include "common/logging/log.h"
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/ir/basic_block.h"
 #include "shader_recompiler/ir/ir_emitter.h"
@@ -99,7 +100,7 @@ public:
           sampler_resources{info_.samplers}, fmask_resources(info_.fmasks) {}
 
     u32 Add(const BufferResource& desc) {
-        const u32 index{Add(buffer_resources, desc, [&desc](const auto& existing) {
+        const u32 index{Add("buffer", buffer_resources, desc, [&desc](const auto& existing) {
             return desc.sharp_fetch == existing.sharp_fetch && desc.post_op == existing.post_op &&
                    desc.post_op_dw1_mask == existing.post_op_dw1_mask &&
                    desc.buffer_type == existing.buffer_type;
@@ -112,7 +113,7 @@ public:
     }
 
     u32 Add(const ImageResource& desc) {
-        const u32 index{Add(image_resources, desc, [&desc](const auto& existing) {
+        const u32 index{Add("image", image_resources, desc, [&desc](const auto& existing) {
             return desc.sharp_fetch == existing.sharp_fetch && desc.is_array == existing.is_array &&
                    desc.mip_fallback_mode == existing.mip_fallback_mode &&
                    desc.constant_mip_index == existing.constant_mip_index &&
@@ -125,7 +126,7 @@ public:
     }
 
     u32 Add(const SamplerResource& desc) {
-        const u32 index{Add(sampler_resources, desc, [this, &desc](const auto& existing) {
+        const u32 index{Add("sampler", sampler_resources, desc, [this, &desc](const auto& existing) {
             return desc.sharp_fetch == existing.sharp_fetch && desc.post_op == existing.post_op &&
                    desc.post_op_tsharp_dw3_off == existing.post_op_tsharp_dw3_off &&
                    desc.is_depth == existing.is_depth;
@@ -134,7 +135,7 @@ public:
     }
 
     u32 Add(const FMaskResource& desc) {
-        u32 index = Add(fmask_resources, desc, [&desc](const auto& existing) {
+        u32 index = Add("fmask", fmask_resources, desc, [&desc](const auto& existing) {
             return desc.sharp_idx == existing.sharp_idx;
         });
         return index;
@@ -142,10 +143,18 @@ public:
 
 private:
     template <typename Descriptors, typename Descriptor, typename Func>
-    static u32 Add(Descriptors& descriptors, const Descriptor& desc, Func&& pred) {
+    static u32 Add(const char* kind, Descriptors& descriptors, const Descriptor& desc,
+                   Func&& pred) {
         const auto it{std::ranges::find_if(descriptors, pred)};
         if (it != descriptors.end()) {
             return static_cast<u32>(std::distance(descriptors.begin(), it));
+        }
+        if (descriptors.size() == descriptors.capacity()) {
+            // The list is a fixed-capacity static_vector; pushing past it throws bad_alloc on the
+            // GPU thread and takes the emulator down. Reuse the last slot and say so instead.
+            LOG_ERROR(Render_Recompiler, "Shader uses more than {} {} resources, reusing the last",
+                      descriptors.capacity(), kind);
+            return static_cast<u32>(descriptors.size()) - 1;
         }
         descriptors.push_back(desc);
         return static_cast<u32>(descriptors.size()) - 1;

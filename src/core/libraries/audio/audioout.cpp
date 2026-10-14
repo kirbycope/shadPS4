@@ -271,6 +271,15 @@ s32 PS4_SYSV_ABI sceAudioOutOpen(UserService::OrbisUserServiceUserId user_id,
         LOG_ERROR(Lib_AudioOut, "Invalid port type");
         return ORBIS_AUDIO_OUT_ERROR_INVALID_PORT_TYPE;
     }
+    if ((port_type == OrbisAudioOutPort::Voice || port_type == OrbisAudioOutPort::Personal ||
+         port_type == OrbisAudioOutPort::PadSpk) &&
+        user_id < 0) {
+        // These ports belong to a signed-in user. Games open one per login slot and treat a failure
+        // as an empty slot; accepting user -1 used up all four pad speaker ports, so the open for the
+        // real user later failed and the game waited forever on voices it could not render.
+        LOG_ERROR(Lib_AudioOut, "Invalid user {} for per-user port type", user_id);
+        return ORBIS_AUDIO_OUT_ERROR_INVALID_PARAM;
+    }
     if (sample_rate != 48000) {
         LOG_ERROR(Lib_AudioOut, "Invalid sample rate");
         return ORBIS_AUDIO_OUT_ERROR_INVALID_SAMPLE_FREQ;

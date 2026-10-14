@@ -953,8 +953,21 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
         }
         case PM4ItOpcode::IndirectBuffer: {
             const auto* indirect_buffer = reinterpret_cast<const PM4CmdIndirectBuffer*>(header);
-            auto task = ProcessCompute<true>(
-                {indirect_buffer->Address<const u32>(), indirect_buffer->ib_size}, vqid);
+            std::vector<u32> snapshot;
+            if constexpr (!is_indirect) {
+                std::scoped_lock lk{asc_ib_mutex};
+                if (const auto it = asc_ib_snapshots.find(acb.data());
+                    it != asc_ib_snapshots.end()) {
+                    snapshot = std::move(it->second);
+                    asc_ib_snapshots.erase(it);
+                }
+            }
+            const std::span<const u32> ib_span =
+                snapshot.size() == indirect_buffer->ib_size
+                    ? std::span<const u32>{snapshot}
+                    : std::span<const u32>{indirect_buffer->Address<const u32>(),
+                                           indirect_buffer->ib_size};
+            auto task = ProcessCompute<true>(ib_span, vqid);
             RESUME_ASC(task, vqid);
 
             while (!task.handle.done()) {
@@ -1209,11 +1222,40 @@ void Liverpool::SubmitGfx(std::span<const u32> dcb, std::span<const u32> ccb) {
     submit_cv.notify_one();
 }
 
+void Liverpool::SnapshotAscIndirectBuffers(std::span<const u32> acb) {
+    // A compute queue on hardware starts on a buffer as soon as it is rung, so games rewrite a
+    // compute buffer for the next frame right after ringing it. Here the buffer is executed later,
+    // on the GPU thread, so copy what each INDIRECT_BUFFER points at now.
+    for (size_t pos = 0; pos < acb.size();) {
+        const auto* header = reinterpret_cast<const PM4Header*>(acb.data() + pos);
+        if (header->type == 2) {
+            ++pos;
+            continue;
+        }
+        if (header->type != 3) {
+            break;
+        }
+        const size_t packet_dw = header->type3.NumWords() + 1;
+        if (pos + packet_dw > acb.size()) {
+            break; // Split across the end of the ring; executed from guest memory.
+        }
+        if (header->type3.opcode == PM4ItOpcode::IndirectBuffer) {
+            const auto* ib = reinterpret_cast<const PM4CmdIndirectBuffer*>(header);
+            const u32* body = ib->Address<const u32>();
+            std::vector<u32> copy(body, body + ib->ib_size);
+            std::scoped_lock lk{asc_ib_mutex};
+            asc_ib_snapshots[acb.data() + pos] = std::move(copy);
+        }
+        pos += packet_dw;
+    }
+}
+
 void Liverpool::SubmitAsc(u32 gnm_vqid, std::span<const u32> acb) {
     ASSERT_MSG(gnm_vqid > 0 && gnm_vqid < NumTotalQueues, "Invalid virtual ASC queue index");
     auto& queue = mapped_queues[gnm_vqid];
 
     const auto vqid = gnm_vqid - 1;
+    SnapshotAscIndirectBuffers(acb);
     const auto& task = ProcessCompute(acb, vqid);
     {
         std::scoped_lock lock{queue.m_access};

@@ -60,6 +60,17 @@ public:
         return PM_PAGE_SIZE;
     }
 
+    /// True when write protection is no longer used for the page because it kept faulting.
+    /// Such pages are left writable and the buffer and texture caches compare their contents.
+    static bool IsHotPage(VAddr addr);
+
+    /// True when hot page demotion is active.
+    static bool HotPagesEnabled();
+
+    /// True when the buffer cache detects CPU writes by comparing page contents instead of
+    /// write-protecting buffer pages.
+    static bool BuffersUseContentHashing();
+
 private:
     friend struct UffdImpl;
     friend struct SignalImpl;

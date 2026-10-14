@@ -7,6 +7,7 @@
 #include <coroutine>
 #include <exception>
 #include <mutex>
+#include <unordered_map>
 #include <semaphore>
 #include <span>
 #include <thread>
@@ -186,6 +187,7 @@ private:
 
     using CmdBuffer = std::pair<std::span<const u32>, std::span<const u32>>;
     CmdBuffer CopyCmdBuffers(std::span<const u32> dcb, std::span<const u32> ccb);
+    void SnapshotAscIndirectBuffers(std::span<const u32> acb);
     Task ProcessGraphics(std::span<const u32> dcb, std::span<const u32> ccb);
     Task ProcessCeUpdate(std::span<const u32> ccb);
     template <bool is_indirect = false>
@@ -233,6 +235,10 @@ private:
     const bool guest_markers_enabled;
     std::jthread process_thread{};
     std::atomic<u32> num_submits{};
+    /// Contents of compute indirect buffers as they were when the queue was rung, keyed by the
+    /// address of the INDIRECT_BUFFER packet in the ring.
+    std::mutex asc_ib_mutex;
+    std::unordered_map<const u32*, std::vector<u32>> asc_ib_snapshots;
     std::atomic<u32> num_commands{};
     std::atomic<bool> submit_done{};
     std::mutex submit_mutex;

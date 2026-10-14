@@ -97,7 +97,10 @@ public:
             update_watchers |= UpdateProtection<cpu_op, gpu_op>(write_prot, read_prot,
                                                                 watcher_bounds, index, mask);
         });
-        const auto write_op = GetPageOp<Type::CPU>(cpu_op);
+        // With content hashing CPU writes are found by comparing pages, so no write watchers.
+        const auto write_op = PageManager::BuffersUseContentHashing()
+                                  ? PageOp::None
+                                  : GetPageOp<Type::CPU>(cpu_op);
         const auto read_op = GetPageOp<Type::GPU>(gpu_op);
         update_watchers &= write_op != PageOp::None || read_op != PageOp::None;
         if (update_watchers) {
@@ -148,7 +151,10 @@ public:
         if (end_page) {
             func(cpu_addr + start_page * BYTES_PER_PAGE, (end_page - start_page) * BYTES_PER_PAGE);
         }
-        const auto write_op = GetPageOp<Type::CPU>(cpu_op);
+        // With content hashing CPU writes are found by comparing pages, so no write watchers.
+        const auto write_op = PageManager::BuffersUseContentHashing()
+                                  ? PageOp::None
+                                  : GetPageOp<Type::CPU>(cpu_op);
         const auto read_op = GetPageOp<Type::GPU>(gpu_op);
         update_watchers &= write_op != PageOp::None || read_op != PageOp::None;
         if (update_watchers) {

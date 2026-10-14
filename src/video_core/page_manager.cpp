@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <atomic>
+#include <cstdlib>
 #include <utility>
 #include "common/adaptive_mutex.h"
 #include "common/assert.h"
@@ -36,6 +38,56 @@
 #endif
 
 namespace VideoCore {
+
+namespace {
+// Pages that keep taking write faults are demoted: they stay writable and the buffer and texture
+// caches compare their contents before use instead. Indexed by a hash of the 4K page number, so a
+// collision only demotes an extra page.
+constexpr size_t HOT_TABLE_BITS = 22;
+constexpr u8 HOT_THRESHOLD = 4;
+std::atomic<u8> g_page_faults[1ULL << HOT_TABLE_BITS];
+
+size_t HotIndex(VAddr addr) {
+    const u64 page = addr >> 12;
+    return (page ^ (page >> HOT_TABLE_BITS)) & ((1ULL << HOT_TABLE_BITS) - 1);
+}
+
+void CountWriteFault(VAddr addr) {
+    auto& count = g_page_faults[HotIndex(addr)];
+    u8 value = count.load(std::memory_order_relaxed);
+    while (value < HOT_THRESHOLD &&
+           !count.compare_exchange_weak(value, value + 1, std::memory_order_relaxed)) {
+    }
+}
+} // namespace
+
+bool PageManager::HotPagesEnabled() {
+#if defined(__APPLE__) && defined(ARCH_X86_64)
+    static const bool enabled = std::getenv("SHADPS4_NO_HOT_PAGES") == nullptr;
+#else
+    static const bool enabled = std::getenv("SHADPS4_HOT_PAGES") != nullptr;
+#endif
+    return enabled;
+}
+
+bool PageManager::BuffersUseContentHashing() {
+#if defined(__APPLE__) && defined(ARCH_X86_64)
+    // Rosetta 2 splits a 256-bit AVX store into two halves. If another thread write-protects the
+    // page between them, the second half faults after the first has landed, Rosetta reports
+    // "unexpectedly need to EmulateForward on a synchronous exception" and the thread never
+    // returns. Buffer pages are re-protected after every upload while the game keeps filling them,
+    // so they are compared by content instead of protected.
+    static const bool enabled = std::getenv("SHADPS4_PROTECT_BUFFERS") == nullptr;
+#else
+    static const bool enabled = std::getenv("SHADPS4_HASH_BUFFERS") != nullptr;
+#endif
+    return enabled;
+}
+
+bool PageManager::IsHotPage(VAddr addr) {
+    return HotPagesEnabled() &&
+           g_page_faults[HotIndex(addr)].load(std::memory_order_relaxed) >= HOT_THRESHOLD;
+}
 
 struct PageManager::Impl {
     struct PageState {
@@ -428,7 +480,24 @@ struct SignalImpl : public PageManager::Impl {
         auto& impl = memory->GetAddressSpace();
         ASSERT_MSG(perms != Core::MemoryPermission::Write,
                    "Attempted to protect region as write-only which is not a valid permission");
-        impl.Protect(address, size, perms);
+        if (perms != Core::MemoryPermission::Read || !PageManager::HotPagesEnabled()) {
+            impl.Protect(address, size, perms);
+            return;
+        }
+        // Write-protect only the pages that have not been demoted.
+        const VAddr end = address + size;
+        VAddr run_start = address;
+        bool run_hot = PageManager::IsHotPage(address);
+        for (VAddr page = address + PageManager::GetPageSize(); page <= end;
+             page += PageManager::GetPageSize()) {
+            const bool hot = page < end && PageManager::IsHotPage(page);
+            if (page == end || hot != run_hot) {
+                impl.Protect(run_start, page - run_start,
+                             run_hot ? Core::MemoryPermission::ReadWrite : perms);
+                run_start = page;
+                run_hot = hot;
+            }
+        }
     }
 
     static bool GuestFaultSignalHandler(void* context, void* fault_address) {
@@ -437,6 +506,7 @@ struct SignalImpl : public PageManager::Impl {
         const auto is_gpu_thread =
             std::this_thread::get_id() == rasterizer->GetGpuCommandProcessorThread();
         if (Common::IsWriteError(context)) {
+            CountWriteFault(addr);
             return rasterizer->InvalidateMemory(addr, size, is_gpu_thread);
         } else {
             return rasterizer->ReadMemory(addr, size, is_gpu_thread);

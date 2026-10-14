@@ -115,6 +115,7 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
 BufferCache::~BufferCache() = default;
 
 void BufferCache::TickFrame() {
+    ++hash_epoch;
     if (std::exchange(fault_process_pending, false)) {
         fault_manager->ProcessFaultBuffer();
     }
@@ -210,6 +211,34 @@ void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 siz
     } else {
         scheduler.Finish();
         write_data();
+    }
+}
+
+void BufferCache::DetectCpuWrites(VAddr device_addr, u64 size) {
+    constexpr u64 PageBits = 12;
+    constexpr u64 PageSize = 1ULL << PageBits;
+    const VAddr first = device_addr >> PageBits;
+    const VAddr last = (device_addr + size - 1) >> PageBits;
+    const bool all_pages = PageManager::BuffersUseContentHashing();
+    const bool range_valid = memory->IsValidMapping(device_addr, size);
+    for (VAddr page = first; page <= last; ++page) {
+        const VAddr addr = page << PageBits;
+        if (!all_pages && !PageManager::IsHotPage(addr)) {
+            continue;
+        }
+        auto& entry = page_hashes[page];
+        if (entry.epoch == hash_epoch) {
+            continue; // Already compared since the last submission.
+        }
+        if (!range_valid && !memory->IsValidMapping(addr, PageSize)) {
+            continue;
+        }
+        const u64 hash = XXH3_64bits(reinterpret_cast<const void*>(addr), PageSize);
+        if (entry.epoch != 0 && entry.hash != hash) {
+            memory_tracker->MarkRegionAsCpuModified(addr, PageSize);
+        }
+        entry.hash = hash;
+        entry.epoch = hash_epoch;
     }
 }
 
@@ -444,6 +473,11 @@ void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_
 
 bool BufferCache::SynchronizeMemory(const Buffer* arena, VAddr device_addr, u32 size,
                                     bool is_written, bool is_texel_buffer) {
+    // Pages that are not write-protected (hot pages, or every page under content hashing) report
+    // no CPU writes, so compare their contents with what was last seen before uploading.
+    if (PageManager::HotPagesEnabled() || PageManager::BuffersUseContentHashing()) {
+        DetectCpuWrites(device_addr, size);
+    }
     boost::container::small_vector<vk::BufferCopy, 4> copies;
     size_t total_size_bytes{};
     memory_tracker->ForEachUploadRange(device_addr, size, is_written, [&](u64 addr, u64 size) {

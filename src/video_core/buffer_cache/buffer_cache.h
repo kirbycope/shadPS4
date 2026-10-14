@@ -4,6 +4,7 @@
 #pragma once
 
 #include <deque>
+#include <unordered_map>
 #include <boost/container/small_vector.hpp>
 
 #include "common/enum.h"
@@ -165,6 +166,13 @@ private:
     Buffer gds_buffer;
     std::unique_ptr<Buffer> null_index_buffer;
     RangeSet gpu_modified_ranges;
+    struct PageHash {
+        u64 hash;
+        u64 epoch;
+    };
+    std::unordered_map<VAddr, PageHash> page_hashes; ///< Last compared contents per 4K page
+    u64 hash_epoch{1};
+    void DetectCpuWrites(VAddr device_addr, u64 size);
 
     std::unique_ptr<FaultManager> fault_manager;
     std::unique_ptr<Buffer> bda_pagetable_buffer;

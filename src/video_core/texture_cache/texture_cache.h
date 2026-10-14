@@ -12,11 +12,13 @@
 #include <boost/container/small_vector.hpp>
 #include <queue>
 #include <tsl/robin_map.h>
+#include <xxhash.h>
 
 #include "common/lru_cache.h"
 #include "common/multi_level_page_table.h"
 #include "common/slot_vector.h"
 #include "shader_recompiler/resource.h"
+#include "video_core/page_manager.h"
 #include "video_core/texture_cache/blit_helper.h"
 #include "video_core/texture_cache/image.h"
 #include "video_core/texture_cache/image_view.h"
@@ -151,10 +153,34 @@ public:
     void AssociateStencil(ImageId depth_id, const ImageInfo& depth_info);
 
     /// Updates image contents if it was modified by CPU.
+    /// Pages that kept taking write faults are no longer protected (PageManager::IsHotPage), so an
+    /// image on one compares its whole guest range with the last hash and re-uploads on change.
+    void DetectHotPageWrites(Image& image) {
+        if (!PageManager::HotPagesEnabled() || True(image.flags & ImageFlagBits::GpuModified)) {
+            return;
+        }
+        const VAddr begin = image.info.guest_address;
+        const VAddr end = begin + image.info.guest_size;
+        bool hot = false;
+        for (VAddr page = PageManager::GetPageAddr(begin); page < end && !hot;
+             page += PageManager::GetPageSize()) {
+            hot = PageManager::IsHotPage(page);
+        }
+        if (!hot) {
+            return;
+        }
+        const u64 hash = XXH3_64bits(std::bit_cast<const u8*>(begin), image.info.guest_size);
+        if (image.hot_hash != 0 && image.hot_hash != hash) {
+            image.flags |= ImageFlagBits::CpuDirty;
+        }
+        image.hot_hash = hash;
+    }
+
     void UpdateImage(ImageId image_id) {
         Image& image = slot_images[image_id];
         TouchImage(image);
         TrackImage(image_id);
+        DetectHotPageWrites(image);
         RefreshImage(image);
     }
 

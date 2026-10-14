@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <unordered_map>
 #include "common/logging/classes.h"
 #include "shader_recompiler/frontend/control_flow_graph.h"
 #include "shader_recompiler/frontend/decode.h"
@@ -13,6 +14,52 @@
 #include "shader_recompiler/recompiler.h"
 
 namespace Shader {
+
+// VGPRs at or above info.vgpr_array_base are reachable by relative moves, so keep them in the
+// per-invocation VGPR array instead of SSA: rewrite their plain reads and writes into array
+// accesses before SSA construction. Runs only for shaders that contain relative moves.
+static void VgprArrayPass(IR::Program& program, const Info& info) {
+    if (info.vgpr_array_base == ~0u) {
+        return;
+    }
+    for (IR::Block* const block : program.blocks) {
+        for (auto it = block->Instructions().begin(); it != block->Instructions().end(); ++it) {
+            IR::Inst& inst = *it;
+            const auto op = inst.GetOpcode();
+            if (op != IR::Opcode::GetVectorRegister && op != IR::Opcode::SetVectorRegister) {
+                continue;
+            }
+            const u32 reg = static_cast<u32>(inst.Arg(0).VectorReg());
+            if (reg < info.vgpr_array_base) {
+                continue;
+            }
+            IR::IREmitter ir{*block, it};
+            if (op == IR::Opcode::GetVectorRegister) {
+                inst.ReplaceUsesWith(ir.LoadVgprArray(ir.Imm32(reg)));
+            } else {
+                ir.StoreVgprArray(ir.Imm32(reg), IR::U32{inst.Arg(1)});
+                inst.Invalidate();
+            }
+        }
+        // Forward stores to later constant-index loads of the same slot within the block, until a
+        // dynamically indexed store could have overwritten it. This keeps values that are produced
+        // and consumed nearby (such as resource sharps) visible to later passes as plain SSA.
+        std::unordered_map<u32, IR::Value> known;
+        for (IR::Inst& inst : block->Instructions()) {
+            if (inst.GetOpcode() == IR::Opcode::StoreVgprArray) {
+                if (inst.Arg(0).IsImmediate()) {
+                    known[inst.Arg(0).U32()] = inst.Arg(1);
+                } else {
+                    known.clear();
+                }
+            } else if (inst.GetOpcode() == IR::Opcode::LoadVgprArray && inst.Arg(0).IsImmediate()) {
+                if (const auto found = known.find(inst.Arg(0).U32()); found != known.end()) {
+                    inst.ReplaceUsesWith(found->second);
+                }
+            }
+        }
+    }
+}
 
 IR::BlockList GenerateBlocks(const IR::AbstractSyntaxList& syntax_list) {
     size_t num_syntax_blocks{};
@@ -89,6 +136,9 @@ IR::Program TranslateProgram(const std::span<const u32>& code, Pools& pools, Inf
     // On NVIDIA GPUs HW interpolation of clip distance values seems broken, and we need to emulate
     // it with expensive discard in PS.
     Shader::InjectClipDistanceAttributes(program, runtime_info);
+
+    // Move every VGPR a relative move can reach into the per-invocation array.
+    VgprArrayPass(program, info);
 
     // Run optimization passes on unstructured graph
     if (!profile.support_float64) {

@@ -293,6 +293,14 @@ Value IREmitter::LoadShared(int bit_size, bool is_signed, const U32& offset, boo
     }
 }
 
+U32 IREmitter::LoadVgprArray(const U32& index) {
+    return Inst<U32>(Opcode::LoadVgprArray, index);
+}
+
+void IREmitter::StoreVgprArray(const U32& index, const U32& value) {
+    Inst(Opcode::StoreVgprArray, index, value);
+}
+
 void IREmitter::WriteShared(int bit_size, const Value& value, const U32& offset, bool is_gds) {
     switch (bit_size) {
     case 16:

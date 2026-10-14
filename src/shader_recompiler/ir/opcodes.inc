@@ -31,6 +31,8 @@ OPCODE(EmitPrimitive,                                       Void,               
 OPCODE(LoadSharedU16,                                       U16,            U32,                                                                            )
 OPCODE(LoadSharedU32,                                       U32,            U32,                                                                            )
 OPCODE(LoadSharedU64,                                       U64,            U32,                                                                            )
+OPCODE(LoadVgprArray,                                       U32,            U32,                                                                            )
+OPCODE(StoreVgprArray,                                      Void,           U32,            U32,                                                            )
 OPCODE(WriteSharedU16,                                      Void,           U32,            U16,                                                            )
 OPCODE(WriteSharedU32,                                      Void,           U32,            U32,                                                            )
 OPCODE(WriteSharedU64,                                      Void,           U32,            U64,                                                            )

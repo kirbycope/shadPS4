@@ -120,6 +120,9 @@ struct Info : InfoPersistent {
     bool uses_buffer_atomic_float_min_max{};
     bool uses_image_atomic_float_min_max{};
     bool uses_lane_id{};
+    /// Lowest VGPR a relative move (v_movrels/v_movreld) indexes from. VGPRs at or above it live
+    /// in a per-invocation array rather than SSA values; ~0u when the shader has no relative moves.
+    u32 vgpr_array_base{~0u};
     bool uses_shader_clock{};
     bool uses_group_quad{};
     bool uses_group_shuffle{};

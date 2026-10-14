@@ -13,6 +13,14 @@ Id EmitLoadSharedU16(EmitContext& ctx, Id offset) {
     return ctx.OpLoad(ctx.U16, pointer);
 }
 
+Id EmitLoadVgprArray(EmitContext& ctx, Id index) {
+    return ctx.OpLoad(ctx.U32[1], ctx.VgprArrayElement(index));
+}
+
+void EmitStoreVgprArray(EmitContext& ctx, Id index, Id value) {
+    ctx.OpStore(ctx.VgprArrayElement(index), value);
+}
+
 Id EmitLoadSharedU32(EmitContext& ctx, Id offset) {
     const Id shift_id{ctx.ConstU32(2U)};
     const Id index{ctx.OpShiftRightLogical(ctx.U32[1], offset, shift_id)};

@@ -38,6 +38,8 @@ path = [
     "AGENTS.md",
     "src/resources/amd_rcp_index_table.bin.zstd",
     "src/resources/amd_rsqrt_index_table.bin.zstd",
+    "macos/README.md",
+    "macos/patches/*",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "shadPS4 Emulator Project"

@@ -1,5 +1,5 @@
 diff --git a/src/core/libraries/audio/audioout.cpp b/src/core/libraries/audio/audioout.cpp
-index 92fcdbf5..e70bb2e5 100644
+index 92fcdbf5..ac2461f3 100644
 --- a/src/core/libraries/audio/audioout.cpp
 +++ b/src/core/libraries/audio/audioout.cpp
 @@ -271,6 +271,15 @@ s32 PS4_SYSV_ABI sceAudioOutOpen(UserService::OrbisUserServiceUserId user_id,
@@ -10,8 +10,8 @@ index 92fcdbf5..e70bb2e5 100644
 +         port_type == OrbisAudioOutPort::PadSpk) &&
 +        user_id < 0) {
 +        // These ports belong to a signed-in user. Games open one per login slot and treat a failure
-+        // as an empty slot; accepting user -1 used up all four pad speaker ports, so the open for the
-+        // real user later failed and the game waited forever on voices it could not render.
++        // as an empty slot; accepting user -1 used up all four pad speaker ports, so the open for
++        // the real user later failed and the game waited forever on voices it could not render.
 +        LOG_ERROR(Lib_AudioOut, "Invalid user {} for per-user port type", user_id);
 +        return ORBIS_AUDIO_OUT_ERROR_INVALID_PARAM;
 +    }
@@ -130,7 +130,7 @@ index ef2589fd..87ba4c6f 100644
  
      Id input_u32{};
 diff --git a/src/shader_recompiler/frontend/translate/vector_alu.cpp b/src/shader_recompiler/frontend/translate/vector_alu.cpp
-index 6f2075fb..5d1df816 100644
+index 6f2075fb..88932413 100644
 --- a/src/shader_recompiler/frontend/translate/vector_alu.cpp
 +++ b/src/shader_recompiler/frontend/translate/vector_alu.cpp
 @@ -1998,27 +1998,30 @@ IR::F32 Translator::LegacyMul(const IR::F32& a, const IR::F32& b) {
@@ -141,8 +141,8 @@ index 6f2075fb..5d1df816 100644
 -// [src_vgprno, src_vgprno + max_m0]. Same for dst regs we may write back to
 +// Relative VGPR moves index the register file with M0. Expressing that as a compare-and-select
 +// over every candidate register made one select per register per move, and shaders with hundreds of
-+// moves (Everybody's Golf) grew to 56k selects that crash Apple's Metal compiler. Instead every VGPR
-+// from the lowest relative base up lives in a per-invocation array (see VgprArrayPass), and a
++// moves (Everybody's Golf) grew to 56k selects that crash Apple's Metal compiler. Instead every
++// VGPR from the lowest relative base up lives in a per-invocation array (see VgprArrayPass), and a
 +// relative move is a single dynamically indexed load or store.
 +static constexpr u32 VgprArrayDumpSlot = 256;
  
@@ -254,7 +254,7 @@ index 5909ff90..1aa07ac1 100644
  OPCODE(WriteSharedU32,                                      Void,           U32,            U32,                                                            )
  OPCODE(WriteSharedU64,                                      Void,           U32,            U64,                                                            )
 diff --git a/src/shader_recompiler/ir/passes/resource_patching_pass.cpp b/src/shader_recompiler/ir/passes/resource_patching_pass.cpp
-index 54fc0257..df30fa17 100644
+index 54fc0257..015c08c5 100644
 --- a/src/shader_recompiler/ir/passes/resource_patching_pass.cpp
 +++ b/src/shader_recompiler/ir/passes/resource_patching_pass.cpp
 @@ -2,6 +2,7 @@
@@ -283,16 +283,23 @@ index 54fc0257..df30fa17 100644
              return desc.sharp_fetch == existing.sharp_fetch && desc.is_array == existing.is_array &&
                     desc.mip_fallback_mode == existing.mip_fallback_mode &&
                     desc.constant_mip_index == existing.constant_mip_index &&
-@@ -125,7 +126,7 @@ public:
+@@ -125,16 +126,18 @@ public:
      }
  
      u32 Add(const SamplerResource& desc) {
 -        const u32 index{Add(sampler_resources, desc, [this, &desc](const auto& existing) {
-+        const u32 index{Add("sampler", sampler_resources, desc, [this, &desc](const auto& existing) {
-             return desc.sharp_fetch == existing.sharp_fetch && desc.post_op == existing.post_op &&
-                    desc.post_op_tsharp_dw3_off == existing.post_op_tsharp_dw3_off &&
-                    desc.is_depth == existing.is_depth;
-@@ -134,7 +135,7 @@ public:
+-            return desc.sharp_fetch == existing.sharp_fetch && desc.post_op == existing.post_op &&
+-                   desc.post_op_tsharp_dw3_off == existing.post_op_tsharp_dw3_off &&
+-                   desc.is_depth == existing.is_depth;
+-        })};
++        const u32 index{
++            Add("sampler", sampler_resources, desc, [this, &desc](const auto& existing) {
++                return desc.sharp_fetch == existing.sharp_fetch &&
++                       desc.post_op == existing.post_op &&
++                       desc.post_op_tsharp_dw3_off == existing.post_op_tsharp_dw3_off &&
++                       desc.is_depth == existing.is_depth;
++            })};
+         return index;
      }
  
      u32 Add(const FMaskResource& desc) {
@@ -301,7 +308,7 @@ index 54fc0257..df30fa17 100644
              return desc.sharp_idx == existing.sharp_idx;
          });
          return index;
-@@ -142,11 +143,19 @@ public:
+@@ -142,11 +145,19 @@ public:
  
  private:
      template <typename Descriptors, typename Descriptor, typename Func>
@@ -529,17 +536,17 @@ index 547ba8b5..b67d7ed7 100644
      {
          std::scoped_lock lock{queue.m_access};
 diff --git a/src/video_core/amdgpu/liverpool.h b/src/video_core/amdgpu/liverpool.h
-index 1d7fae48..e6bdfc02 100644
+index 1d7fae48..7a64c326 100644
 --- a/src/video_core/amdgpu/liverpool.h
 +++ b/src/video_core/amdgpu/liverpool.h
-@@ -7,6 +7,7 @@
- #include <coroutine>
- #include <exception>
- #include <mutex>
-+#include <unordered_map>
+@@ -10,6 +10,7 @@
  #include <semaphore>
  #include <span>
  #include <thread>
++#include <unordered_map>
+ #include <vector>
+ #include <queue>
+ 
 @@ -186,6 +187,7 @@ private:
  
      using CmdBuffer = std::pair<std::span<const u32>, std::span<const u32>>;
@@ -619,7 +626,7 @@ index 94116ce3..d1571f8d 100644
      size_t total_size_bytes{};
      memory_tracker->ForEachUploadRange(device_addr, size, is_written, [&](u64 addr, u64 size) {
 diff --git a/src/video_core/buffer_cache/buffer_cache.h b/src/video_core/buffer_cache/buffer_cache.h
-index c03c07de..a08dbdd4 100644
+index c03c07de..fdc96cf1 100644
 --- a/src/video_core/buffer_cache/buffer_cache.h
 +++ b/src/video_core/buffer_cache/buffer_cache.h
 @@ -4,6 +4,7 @@
@@ -630,7 +637,19 @@ index c03c07de..a08dbdd4 100644
  #include <boost/container/small_vector.hpp>
  
  #include "common/enum.h"
-@@ -165,6 +166,13 @@ private:
+@@ -91,6 +92,11 @@ public:
+ 
+     void TickFrame();
+ 
++    /// Advances once per frame; content checks run at most once per page per epoch.
++    [[nodiscard]] u64 HashEpoch() const noexcept {
++        return hash_epoch;
++    }
++
+     /// Invalidates any buffer in the logical page range.
+     void InvalidateMemory(VAddr device_addr, u64 size, bool assume_locks = false);
+ 
+@@ -165,6 +171,13 @@ private:
      Buffer gds_buffer;
      std::unique_ptr<Buffer> null_index_buffer;
      RangeSet gpu_modified_ranges;
@@ -645,35 +664,33 @@ index c03c07de..a08dbdd4 100644
      std::unique_ptr<FaultManager> fault_manager;
      std::unique_ptr<Buffer> bda_pagetable_buffer;
 diff --git a/src/video_core/buffer_cache/region_manager.h b/src/video_core/buffer_cache/region_manager.h
-index ba82498e..ab21311d 100644
+index ba82498e..64d035f5 100644
 --- a/src/video_core/buffer_cache/region_manager.h
 +++ b/src/video_core/buffer_cache/region_manager.h
-@@ -97,7 +97,10 @@ public:
+@@ -97,7 +97,9 @@ public:
              update_watchers |= UpdateProtection<cpu_op, gpu_op>(write_prot, read_prot,
                                                                  watcher_bounds, index, mask);
          });
 -        const auto write_op = GetPageOp<Type::CPU>(cpu_op);
 +        // With content hashing CPU writes are found by comparing pages, so no write watchers.
-+        const auto write_op = PageManager::BuffersUseContentHashing()
-+                                  ? PageOp::None
-+                                  : GetPageOp<Type::CPU>(cpu_op);
++        const auto write_op =
++            PageManager::BuffersUseContentHashing() ? PageOp::None : GetPageOp<Type::CPU>(cpu_op);
          const auto read_op = GetPageOp<Type::GPU>(gpu_op);
          update_watchers &= write_op != PageOp::None || read_op != PageOp::None;
          if (update_watchers) {
-@@ -148,7 +151,10 @@ public:
+@@ -148,7 +150,9 @@ public:
          if (end_page) {
              func(cpu_addr + start_page * BYTES_PER_PAGE, (end_page - start_page) * BYTES_PER_PAGE);
          }
 -        const auto write_op = GetPageOp<Type::CPU>(cpu_op);
 +        // With content hashing CPU writes are found by comparing pages, so no write watchers.
-+        const auto write_op = PageManager::BuffersUseContentHashing()
-+                                  ? PageOp::None
-+                                  : GetPageOp<Type::CPU>(cpu_op);
++        const auto write_op =
++            PageManager::BuffersUseContentHashing() ? PageOp::None : GetPageOp<Type::CPU>(cpu_op);
          const auto read_op = GetPageOp<Type::GPU>(gpu_op);
          update_watchers &= write_op != PageOp::None || read_op != PageOp::None;
          if (update_watchers) {
 diff --git a/src/video_core/page_manager.cpp b/src/video_core/page_manager.cpp
-index c8e463cf..42cd5037 100644
+index c8e463cf..62ebcd3a 100644
 --- a/src/video_core/page_manager.cpp
 +++ b/src/video_core/page_manager.cpp
 @@ -2,6 +2,8 @@
@@ -742,7 +759,19 @@ index c8e463cf..42cd5037 100644
  struct PageManager::Impl {
      struct PageState {
          u8 num_write_watchers;
-@@ -428,7 +480,24 @@ struct SignalImpl : public PageManager::Impl {
+@@ -53,6 +105,11 @@ struct PageManager::Impl {
+         }
+ 
+         Core::MemoryPermission Perms() const noexcept {
++            // A read-watched page that is not write-watched (buffers compared by content) would
++            // be write-only, which the host cannot map, so it loses all access instead.
++            if (num_read_watchers != 0) {
++                return Core::MemoryPermission::None;
++            }
+             return ReadPerm() | WritePerm();
+         }
+ 
+@@ -428,7 +485,24 @@ struct SignalImpl : public PageManager::Impl {
          auto& impl = memory->GetAddressSpace();
          ASSERT_MSG(perms != Core::MemoryPermission::Write,
                     "Attempted to protect region as write-only which is not a valid permission");
@@ -768,7 +797,7 @@ index c8e463cf..42cd5037 100644
      }
  
      static bool GuestFaultSignalHandler(void* context, void* fault_address) {
-@@ -437,6 +506,7 @@ struct SignalImpl : public PageManager::Impl {
+@@ -437,6 +511,7 @@ struct SignalImpl : public PageManager::Impl {
          const auto is_gpu_thread =
              std::this_thread::get_id() == rasterizer->GetGpuCommandProcessorThread();
          if (Common::IsWriteError(context)) {
@@ -799,15 +828,14 @@ index f24c601b..a408df88 100644
      friend struct UffdImpl;
      friend struct SignalImpl;
 diff --git a/src/video_core/renderer_vulkan/vk_runtime.cpp b/src/video_core/renderer_vulkan/vk_runtime.cpp
-index 578a283a..b928fadf 100644
+index 578a283a..6ec56e8f 100644
 --- a/src/video_core/renderer_vulkan/vk_runtime.cpp
 +++ b/src/video_core/renderer_vulkan/vk_runtime.cpp
-@@ -322,6 +322,44 @@ void Runtime::CopyImage(VideoCore::Image* src, VideoCore::Image* dst) {
+@@ -322,6 +322,43 @@ void Runtime::CopyImage(VideoCore::Image* src, VideoCore::Image* dst) {
      dst->flags &= ~VideoCore::ImageFlagBits::Dirty;
  }
  
-+void Runtime::CopyImageRegion(VideoCore::Image* src, VideoCore::Image* dst, u32 width,
-+                              u32 height) {
++void Runtime::CopyImageRegion(VideoCore::Image* src, VideoCore::Image* dst, u32 width, u32 height) {
 +    SetBackingSamples(dst, dst->info.num_samples, false);
 +    SetBackingSamples(src, src->info.num_samples);
 +
@@ -861,19 +889,20 @@ index 7dffced1..ad5245aa 100644
                               const VideoCore::Buffer* buffer, u64 offset);
      void CopyMip(VideoCore::Image* src, VideoCore::Image* dst, u32 mip, u32 slice);
 diff --git a/src/video_core/texture_cache/image.h b/src/video_core/texture_cache/image.h
-index 9c3071ad..659a4757 100644
+index 9c3071ad..8fabb7b1 100644
 --- a/src/video_core/texture_cache/image.h
 +++ b/src/video_core/texture_cache/image.h
-@@ -173,6 +173,7 @@ public:
+@@ -173,6 +173,8 @@ public:
      u64 lru_id{};
      u64 tick_accessed_last{};
      u64 cpu_hash{};
-+    u64 hot_hash{}; ///< Full-contents hash, used while the image sits on a demoted page
++    u64 hot_hash{};  ///< Full-contents hash, used while the image sits on a demoted page
++    u64 hot_epoch{}; ///< Buffer cache hash epoch of the last hot page check
      u64 gpu_hash{};
  
      struct {
 diff --git a/src/video_core/texture_cache/texture_cache.cpp b/src/video_core/texture_cache/texture_cache.cpp
-index c89f676f..d2fd4ba4 100644
+index c89f676f..2107790e 100644
 --- a/src/video_core/texture_cache/texture_cache.cpp
 +++ b/src/video_core/texture_cache/texture_cache.cpp
 @@ -630,6 +630,9 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
@@ -886,7 +915,7 @@ index c89f676f..d2fd4ba4 100644
  
      // If the image requested is a subresource of the image from cache record its location.
      if (view_mip > 0) {
-@@ -642,6 +645,39 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
+@@ -642,6 +645,38 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
      return image_id;
  }
  
@@ -909,25 +938,57 @@ index c89f676f..d2fd4ba4 100644
 +        }
 +        const auto& o = other.info;
 +        if (o.guest_address == info.guest_address && o.pitch == info.pitch &&
-+            o.tile_mode == info.tile_mode && o.num_bits == info.num_bits &&
-+            o.type == info.type && !o.props.is_block && o.num_samples == 1 &&
-+            o.size.width >= info.size.width && o.size.height >= info.size.height &&
++            o.tile_mode == info.tile_mode && o.num_bits == info.num_bits && o.type == info.type &&
++            !o.props.is_block && o.num_samples == 1 && o.size.width >= info.size.width &&
++            o.size.height >= info.size.height &&
 +            (o.size.width != info.size.width || o.size.height != info.size.height) &&
 +            True(other.flags & ImageFlagBits::GpuModified)) {
 +            source_id = id;
 +        }
 +    });
 +    if (source_id) {
-+        runtime.CopyImageRegion(&slot_images[source_id], &image, info.size.width,
-+                                info.size.height);
++        runtime.CopyImageRegion(&slot_images[source_id], &image, info.size.width, info.size.height);
 +    }
 +}
 +
  ImageId TextureCache::FindImageFromRange(VAddr address, size_t size, bool ensure_valid) {
      SmallVector<ImageId, 4> image_ids;
      ForEachImageWithAddress(address, [&](ImageId image_id, Image& image) {
+@@ -808,6 +843,32 @@ void TextureCache::AssociateStencil(ImageId depth_id, const ImageInfo& depth_inf
+     stencil_image.AssociateDepth(depth_id, slot_images[depth_id].image_uid);
+ }
+ 
++void TextureCache::DetectHotPageWrites(Image& image) {
++    if (!PageManager::HotPagesEnabled() || True(image.flags & ImageFlagBits::GpuModified)) {
++        return;
++    }
++    const u64 epoch = buffer_cache.HashEpoch();
++    if (image.hot_epoch == epoch) {
++        return;
++    }
++    image.hot_epoch = epoch;
++    const VAddr begin = image.info.guest_address;
++    const VAddr end = begin + image.info.guest_size;
++    bool hot = false;
++    for (VAddr page = PageManager::GetPageAddr(begin); page < end && !hot;
++         page += PageManager::GetPageSize()) {
++        hot = PageManager::IsHotPage(page);
++    }
++    if (!hot) {
++        return;
++    }
++    const u64 hash = XXH3_64bits(std::bit_cast<const u8*>(begin), image.info.guest_size);
++    if (image.hot_hash != 0 && image.hot_hash != hash) {
++        image.flags |= ImageFlagBits::CpuDirty;
++    }
++    image.hot_hash = hash;
++}
++
+ void TextureCache::RefreshImage(Image& image) {
+     if (False(image.flags & ImageFlagBits::Dirty) || image.info.num_samples > 1) {
+         return;
 diff --git a/src/video_core/texture_cache/texture_cache.h b/src/video_core/texture_cache/texture_cache.h
-index 420f4720..d5ae48ed 100644
+index 420f4720..464891d8 100644
 --- a/src/video_core/texture_cache/texture_cache.h
 +++ b/src/video_core/texture_cache/texture_cache.h
 @@ -12,11 +12,13 @@
@@ -944,7 +1005,7 @@ index 420f4720..d5ae48ed 100644
  #include "video_core/texture_cache/blit_helper.h"
  #include "video_core/texture_cache/image.h"
  #include "video_core/texture_cache/image_view.h"
-@@ -151,10 +153,37 @@ public:
+@@ -151,10 +153,20 @@ public:
      void AssociateStencil(ImageId depth_id, const ImageInfo& depth_info);
  
      /// Updates image contents if it was modified by CPU.
@@ -953,26 +1014,9 @@ index 420f4720..d5ae48ed 100644
 +
 +    /// Pages that kept taking write faults are no longer protected (PageManager::IsHotPage), so an
 +    /// image on one compares its whole guest range with the last hash and re-uploads on change.
-+    void DetectHotPageWrites(Image& image) {
-+        if (!PageManager::HotPagesEnabled() || True(image.flags & ImageFlagBits::GpuModified)) {
-+            return;
-+        }
-+        const VAddr begin = image.info.guest_address;
-+        const VAddr end = begin + image.info.guest_size;
-+        bool hot = false;
-+        for (VAddr page = PageManager::GetPageAddr(begin); page < end && !hot;
-+             page += PageManager::GetPageSize()) {
-+            hot = PageManager::IsHotPage(page);
-+        }
-+        if (!hot) {
-+            return;
-+        }
-+        const u64 hash = XXH3_64bits(std::bit_cast<const u8*>(begin), image.info.guest_size);
-+        if (image.hot_hash != 0 && image.hot_hash != hash) {
-+            image.flags |= ImageFlagBits::CpuDirty;
-+        }
-+        image.hot_hash = hash;
-+    }
++    /// Checked at most once per frame: hashing a large texture on every bind costs far more than
++    /// the write protection it replaces.
++    void DetectHotPageWrites(Image& image);
 +
      void UpdateImage(ImageId image_id) {
          Image& image = slot_images[image_id];

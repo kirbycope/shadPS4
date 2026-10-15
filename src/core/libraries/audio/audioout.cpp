@@ -293,6 +293,13 @@ s32 PS4_SYSV_ABI sceAudioOutOpen(UserService::OrbisUserServiceUserId user_id,
         return ORBIS_AUDIO_OUT_ERROR_INVALID_FORMAT;
     }
 
+    if ((port_type == OrbisAudioOutPort::Voice || port_type == OrbisAudioOutPort::Personal ||
+         port_type == OrbisAudioOutPort::PadSpk) &&
+        user_id < 0) {
+        LOG_ERROR(Lib_AudioOut, "Invalid user {} for per-user port type", user_id);
+        return ORBIS_AUDIO_OUT_ERROR_INVALID_PARAM;
+    }
+
     std::unique_lock lock{port_allocation_mutex};
 
     // Allocate port

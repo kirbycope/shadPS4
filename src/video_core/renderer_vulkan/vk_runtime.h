@@ -51,6 +51,8 @@ public:
                        std::span<const vk::BufferImageCopy> download_copies);
 
     void CopyImage(VideoCore::Image* src, VideoCore::Image* dst);
+    /// Copies the top-left width x height texels of mip 0, layer 0.
+    void CopyImageRegion(VideoCore::Image* src, VideoCore::Image* dst, u32 width, u32 height);
     void CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
                              const VideoCore::Buffer* buffer, u64 offset);
     void CopyMip(VideoCore::Image* src, VideoCore::Image* dst, u32 mip, u32 slice);

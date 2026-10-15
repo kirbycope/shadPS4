@@ -630,6 +630,9 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
     Image& image = slot_images[image_id];
     image.tick_accessed_last = scheduler.CurrentTick();
     TouchImage(image);
+    if (desc.type == BindingType::Texture) {
+        SyncFromCoveringImage(image_id);
+    }
 
     // If the image requested is a subresource of the image from cache record its location.
     if (view_mip > 0) {
@@ -640,6 +643,39 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
     }
 
     return image_id;
+}
+
+void TextureCache::SyncFromCoveringImage(ImageId image_id) {
+    // Games describe a smaller texture with the pitch of a larger render target at the same
+    // address to sample its top-left corner, e.g. a 960x540 view with pitch 1920 of a 1920x1080
+    // post-processing target. The two are separate images here, so bring the corner over from the
+    // render target when it holds GPU-written data the smaller image has not seen.
+    Image& image = slot_images[image_id];
+    if (True(image.flags & ImageFlagBits::GpuModified) || image.info.props.is_block ||
+        image.info.num_samples > 1 || image.info.resources.layers != 1 ||
+        image.info.type != AmdGpu::ImageType::Color2D) {
+        return;
+    }
+    const auto& info = image.info;
+    ImageId source_id{};
+    ForEachImageInRegion(info.guest_address, info.guest_size, [&](ImageId id, Image& other) {
+        if (id == image_id || source_id) {
+            return;
+        }
+        const auto& o = other.info;
+        if (o.guest_address == info.guest_address && o.pitch == info.pitch &&
+            o.tile_mode == info.tile_mode && o.num_bits == info.num_bits &&
+            o.type == info.type && !o.props.is_block && o.num_samples == 1 &&
+            o.size.width >= info.size.width && o.size.height >= info.size.height &&
+            (o.size.width != info.size.width || o.size.height != info.size.height) &&
+            True(other.flags & ImageFlagBits::GpuModified)) {
+            source_id = id;
+        }
+    });
+    if (source_id) {
+        runtime.CopyImageRegion(&slot_images[source_id], &image, info.size.width,
+                                info.size.height);
+    }
 }
 
 ImageId TextureCache::FindImageFromRange(VAddr address, size_t size, bool ensure_valid) {

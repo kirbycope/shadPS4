@@ -153,6 +153,9 @@ public:
     void AssociateStencil(ImageId depth_id, const ImageInfo& depth_info);
 
     /// Updates image contents if it was modified by CPU.
+    /// Copies the covered corner of a larger, GPU-written image at the same address and pitch.
+    void SyncFromCoveringImage(ImageId image_id);
+
     /// Pages that kept taking write faults are no longer protected (PageManager::IsHotPage), so an
     /// image on one compares its whole guest range with the last hash and re-uploads on change.
     void DetectHotPageWrites(Image& image) {

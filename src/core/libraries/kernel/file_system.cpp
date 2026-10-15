@@ -162,6 +162,13 @@ s32 PS4_SYSV_ABI open(const char* raw_path, s32 flags, u16 mode) {
         }
 
         if (!exists) {
+            if (!std::filesystem::is_directory(file->m_host_name.parent_path())) {
+                h->DeleteHandle(handle);
+                *__Error() = POSIX_ENOENT;
+                LOG_ERROR(Kernel_Fs, "Creating {} failed, parent directory does not exist",
+                          raw_path);
+                return -1;
+            }
             if (read_only) {
                 // Can't create files in a read only directory
                 h->DeleteHandle(handle);

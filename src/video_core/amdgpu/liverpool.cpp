@@ -834,7 +834,10 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::WaitOnCeCounter: {
-                while (cblock.ce_count <= cblock.de_count && !ce_task.handle.done()) {
+                // A buffer submitted without a constant engine stream has no CE task, and nothing
+                // can advance the CE counter; done() on its null handle reads address 0.
+                while (ce_task.handle && cblock.ce_count <= cblock.de_count &&
+                       !ce_task.handle.done()) {
                     RESUME_GFX(ce_task);
                 }
                 break;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <unordered_map>
+#include <unordered_set>
 #include "common/logging/classes.h"
 #include "shader_recompiler/frontend/control_flow_graph.h"
 #include "shader_recompiler/frontend/decode.h"
@@ -22,6 +23,26 @@ static void VgprArrayPass(IR::Program& program, const Info& info) {
     if (info.vgpr_array_base == ~0u) {
         return;
     }
+    // Registers used as per-lane scratch through v_writelane/v_readlane (games save EXEC there)
+    // stay plain registers: ReadLaneEliminationPass can only fold a ReadLane into the value its
+    // WriteLane stored when the two are connected through SSA, and a round trip through the array
+    // would leave a real cross-lane read of lanes that may not be active.
+    std::unordered_set<u32> lane_regs;
+    for (IR::Block* const block : program.blocks) {
+        for (IR::Inst& inst : block->Instructions()) {
+            const auto op = inst.GetOpcode();
+            if (op == IR::Opcode::SetVectorRegister && !inst.Arg(1).IsImmediate() &&
+                inst.Arg(1).Inst()->GetOpcode() == IR::Opcode::WriteLane) {
+                lane_regs.insert(static_cast<u32>(inst.Arg(0).VectorReg()));
+            } else if ((op == IR::Opcode::ReadLane || op == IR::Opcode::WriteLane) &&
+                       !inst.Arg(0).IsImmediate()) {
+                const IR::Inst* src = inst.Arg(0).Inst();
+                if (src->GetOpcode() == IR::Opcode::GetVectorRegister) {
+                    lane_regs.insert(static_cast<u32>(src->Arg(0).VectorReg()));
+                }
+            }
+        }
+    }
     for (IR::Block* const block : program.blocks) {
         for (auto it = block->Instructions().begin(); it != block->Instructions().end(); ++it) {
             IR::Inst& inst = *it;
@@ -30,7 +51,7 @@ static void VgprArrayPass(IR::Program& program, const Info& info) {
                 continue;
             }
             const u32 reg = static_cast<u32>(inst.Arg(0).VectorReg());
-            if (reg < info.vgpr_array_base) {
+            if (reg < info.vgpr_array_base || lane_regs.contains(reg)) {
                 continue;
             }
             IR::IREmitter ir{*block, it};

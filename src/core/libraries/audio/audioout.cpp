@@ -275,8 +275,8 @@ s32 PS4_SYSV_ABI sceAudioOutOpen(UserService::OrbisUserServiceUserId user_id,
          port_type == OrbisAudioOutPort::PadSpk) &&
         user_id < 0) {
         // These ports belong to a signed-in user. Games open one per login slot and treat a failure
-        // as an empty slot; accepting user -1 used up all four pad speaker ports, so the open for the
-        // real user later failed and the game waited forever on voices it could not render.
+        // as an empty slot; accepting user -1 used up all four pad speaker ports, so the open for
+        // the real user later failed and the game waited forever on voices it could not render.
         LOG_ERROR(Lib_AudioOut, "Invalid user {} for per-user port type", user_id);
         return ORBIS_AUDIO_OUT_ERROR_INVALID_PARAM;
     }

@@ -2000,8 +2000,8 @@ IR::F32 Translator::LegacyMul(const IR::F32& a, const IR::F32& b) {
 
 // Relative VGPR moves index the register file with M0. Expressing that as a compare-and-select
 // over every candidate register made one select per register per move, and shaders with hundreds of
-// moves (Everybody's Golf) grew to 56k selects that crash Apple's Metal compiler. Instead every VGPR
-// from the lowest relative base up lives in a per-invocation array (see VgprArrayPass), and a
+// moves (Everybody's Golf) grew to 56k selects that crash Apple's Metal compiler. Instead every
+// VGPR from the lowest relative base up lives in a per-invocation array (see VgprArrayPass), and a
 // relative move is a single dynamically indexed load or store.
 static constexpr u32 VgprArrayDumpSlot = 256;
 

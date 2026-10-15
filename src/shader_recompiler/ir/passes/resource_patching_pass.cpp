@@ -126,11 +126,13 @@ public:
     }
 
     u32 Add(const SamplerResource& desc) {
-        const u32 index{Add("sampler", sampler_resources, desc, [this, &desc](const auto& existing) {
-            return desc.sharp_fetch == existing.sharp_fetch && desc.post_op == existing.post_op &&
-                   desc.post_op_tsharp_dw3_off == existing.post_op_tsharp_dw3_off &&
-                   desc.is_depth == existing.is_depth;
-        })};
+        const u32 index{
+            Add("sampler", sampler_resources, desc, [this, &desc](const auto& existing) {
+                return desc.sharp_fetch == existing.sharp_fetch &&
+                       desc.post_op == existing.post_op &&
+                       desc.post_op_tsharp_dw3_off == existing.post_op_tsharp_dw3_off &&
+                       desc.is_depth == existing.is_depth;
+            })};
         return index;
     }
 

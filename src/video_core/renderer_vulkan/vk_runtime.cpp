@@ -322,8 +322,7 @@ void Runtime::CopyImage(VideoCore::Image* src, VideoCore::Image* dst) {
     dst->flags &= ~VideoCore::ImageFlagBits::Dirty;
 }
 
-void Runtime::CopyImageRegion(VideoCore::Image* src, VideoCore::Image* dst, u32 width,
-                              u32 height) {
+void Runtime::CopyImageRegion(VideoCore::Image* src, VideoCore::Image* dst, u32 width, u32 height) {
     SetBackingSamples(dst, dst->info.num_samples, false);
     SetBackingSamples(src, src->info.num_samples);
 

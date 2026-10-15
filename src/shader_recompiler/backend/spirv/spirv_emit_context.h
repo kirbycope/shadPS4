@@ -95,6 +95,17 @@ public:
         return id;
     }
 
+    [[nodiscard]] Id VgprArrayElement(Id index) {
+        if (vgpr_array.value == 0) {
+            const Id array_type{TypeArray(U32[1], ConstU32(257U))};
+            vgpr_array = AddGlobalVariable(TypePointer(spv::StorageClass::Private, array_type),
+                                           spv::StorageClass::Private);
+            interfaces.push_back(vgpr_array);
+            vgpr_array_elem_ptr = TypePointer(spv::StorageClass::Private, U32[1]);
+        }
+        return OpAccessChain(vgpr_array_elem_ptr, vgpr_array, index);
+    }
+
     [[nodiscard]] Id ConstU32(u32 value) {
         return Constant(U32[1], value);
     }
@@ -232,6 +243,8 @@ public:
 
     Id shared_u16{};
     Id shared_u32{};
+    Id vgpr_array{};
+    Id vgpr_array_elem_ptr{};
     Id shared_u64{};
 
     Id input_u32{};

@@ -1998,27 +1998,25 @@ IR::F32 Translator::LegacyMul(const IR::F32& a, const IR::F32& b) {
     return IR::F32{ir.Select(either_zero, zero, ir.FPMul(a, b))};
 }
 
-// TODO: add range analysis pass to hopefully put an upper bound on m0, and only select one of
-// [src_vgprno, src_vgprno + max_m0]. Same for dst regs we may write back to
+static constexpr u32 VgprArrayDumpSlot = 256;
 
 IR::U32 Translator::VMovRelSHelper(u32 src_vgprno, const IR::U32 m0) {
+    info.vgpr_array_base = std::min(info.vgpr_array_base, src_vgprno);
+    const u32 end = runtime_info.props.num_allocated_vgprs;
     // Read from VGPR0 by default when src_vgprno + m0 > num_allocated_vgprs
-    IR::U32 src_val = ir.GetVectorReg<IR::U32>(IR::VectorReg::V0);
-    for (u32 i = src_vgprno; i < runtime_info.props.num_allocated_vgprs; i++) {
-        const IR::U1 cond = ir.IEqual(m0, ir.Imm32(i - src_vgprno));
-        src_val =
-            IR::U32{ir.Select(cond, ir.GetVectorReg<IR::U32>(IR::VectorReg::V0 + i), src_val)};
-    }
-    return src_val;
+    const IR::U32 index{ir.IAdd(m0, ir.Imm32(src_vgprno))};
+    const IR::U1 in_range{ir.ILessThan(index, ir.Imm32(end), false)};
+    const IR::U32 loaded{ir.LoadVgprArray(IR::U32{ir.Select(in_range, index, ir.Imm32(0U))})};
+    return IR::U32{ir.Select(in_range, loaded, ir.GetVectorReg<IR::U32>(IR::VectorReg::V0))};
 }
 
 void Translator::VMovRelDHelper(u32 dst_vgprno, const IR::U32 src_val, const IR::U32 m0) {
-    for (u32 i = dst_vgprno; i < runtime_info.props.num_allocated_vgprs; i++) {
-        const IR::U1 cond = ir.IEqual(m0, ir.Imm32(i - dst_vgprno));
-        const IR::U32 dst_val =
-            IR::U32{ir.Select(cond, src_val, ir.GetVectorReg<IR::U32>(IR::VectorReg::V0 + i))};
-        ir.SetVectorReg(IR::VectorReg::V0 + i, dst_val);
-    }
+    info.vgpr_array_base = std::min(info.vgpr_array_base, dst_vgprno);
+    const u32 end = runtime_info.props.num_allocated_vgprs;
+    // A write past num_allocated_vgprs is dropped, so send it to the dump slot.
+    const IR::U32 index{ir.IAdd(m0, ir.Imm32(dst_vgprno))};
+    const IR::U1 in_range{ir.ILessThan(index, ir.Imm32(end), false)};
+    ir.StoreVgprArray(IR::U32{ir.Select(in_range, index, ir.Imm32(VgprArrayDumpSlot))}, src_val);
 }
 
 } // namespace Shader::Gcn

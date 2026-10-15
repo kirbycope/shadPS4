@@ -96,6 +96,9 @@ public:
                                    bool is_gds = false);
     void WriteShared(int bit_size, const Value& value, const U32& offset, bool is_gds = false);
 
+    [[nodiscard]] U32 LoadVgprArray(const U32& index);
+    void StoreVgprArray(const U32& index, const U32& value);
+
     [[nodiscard]] U32U64 SharedAtomicIAdd(const U32& address, const U32U64& data, bool is_gds);
     [[nodiscard]] U32U64 SharedAtomicISub(const U32& address, const U32U64& data, bool is_gds);
     [[nodiscard]] U32U64 SharedAtomicIMin(const U32& address, const U32U64& data, bool is_signed,

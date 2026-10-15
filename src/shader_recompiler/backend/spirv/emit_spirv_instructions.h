@@ -137,6 +137,8 @@ Id EmitUndefU64(EmitContext& ctx);
 Id EmitLoadSharedU16(EmitContext& ctx, Id offset);
 Id EmitLoadSharedU32(EmitContext& ctx, Id offset);
 Id EmitLoadSharedU64(EmitContext& ctx, Id offset);
+Id EmitLoadVgprArray(EmitContext& ctx, Id index);
+void EmitStoreVgprArray(EmitContext& ctx, Id index, Id value);
 void EmitWriteSharedU16(EmitContext& ctx, Id offset, Id value);
 void EmitWriteSharedU32(EmitContext& ctx, Id offset, Id value);
 void EmitWriteSharedU64(EmitContext& ctx, Id offset, Id value);

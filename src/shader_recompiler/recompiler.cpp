@@ -90,6 +90,8 @@ IR::Program TranslateProgram(const std::span<const u32>& code, Pools& pools, Inf
     // it with expensive discard in PS.
     Shader::InjectClipDistanceAttributes(program, runtime_info);
 
+    Shader::Optimization::VgprArrayPass(program);
+
     // Run optimization passes on unstructured graph
     if (!profile.support_float64) {
         Shader::Optimization::LowerFp64ToFp32(program);

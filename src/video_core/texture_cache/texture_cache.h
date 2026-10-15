@@ -158,26 +158,9 @@ public:
 
     /// Pages that kept taking write faults are no longer protected (PageManager::IsHotPage), so an
     /// image on one compares its whole guest range with the last hash and re-uploads on change.
-    void DetectHotPageWrites(Image& image) {
-        if (!PageManager::HotPagesEnabled() || True(image.flags & ImageFlagBits::GpuModified)) {
-            return;
-        }
-        const VAddr begin = image.info.guest_address;
-        const VAddr end = begin + image.info.guest_size;
-        bool hot = false;
-        for (VAddr page = PageManager::GetPageAddr(begin); page < end && !hot;
-             page += PageManager::GetPageSize()) {
-            hot = PageManager::IsHotPage(page);
-        }
-        if (!hot) {
-            return;
-        }
-        const u64 hash = XXH3_64bits(std::bit_cast<const u8*>(begin), image.info.guest_size);
-        if (image.hot_hash != 0 && image.hot_hash != hash) {
-            image.flags |= ImageFlagBits::CpuDirty;
-        }
-        image.hot_hash = hash;
-    }
+    /// Checked at most once per frame: hashing a large texture on every bind costs far more than
+    /// the write protection it replaces.
+    void DetectHotPageWrites(Image& image);
 
     void UpdateImage(ImageId image_id) {
         Image& image = slot_images[image_id];

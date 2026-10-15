@@ -92,6 +92,11 @@ public:
 
     void TickFrame();
 
+    /// Advances once per frame; content checks run at most once per page per epoch.
+    [[nodiscard]] u64 HashEpoch() const noexcept {
+        return hash_epoch;
+    }
+
     /// Invalidates any buffer in the logical page range.
     void InvalidateMemory(VAddr device_addr, u64 size, bool assume_locks = false);
 

@@ -664,17 +664,16 @@ void TextureCache::SyncFromCoveringImage(ImageId image_id) {
         }
         const auto& o = other.info;
         if (o.guest_address == info.guest_address && o.pitch == info.pitch &&
-            o.tile_mode == info.tile_mode && o.num_bits == info.num_bits &&
-            o.type == info.type && !o.props.is_block && o.num_samples == 1 &&
-            o.size.width >= info.size.width && o.size.height >= info.size.height &&
+            o.tile_mode == info.tile_mode && o.num_bits == info.num_bits && o.type == info.type &&
+            !o.props.is_block && o.num_samples == 1 && o.size.width >= info.size.width &&
+            o.size.height >= info.size.height &&
             (o.size.width != info.size.width || o.size.height != info.size.height) &&
             True(other.flags & ImageFlagBits::GpuModified)) {
             source_id = id;
         }
     });
     if (source_id) {
-        runtime.CopyImageRegion(&slot_images[source_id], &image, info.size.width,
-                                info.size.height);
+        runtime.CopyImageRegion(&slot_images[source_id], &image, info.size.width, info.size.height);
     }
 }
 
@@ -842,6 +841,32 @@ void TextureCache::AssociateStencil(ImageId depth_id, const ImageInfo& depth_inf
     Image& stencil_image = slot_images[stencil_id];
     TouchImage(stencil_image);
     stencil_image.AssociateDepth(depth_id, slot_images[depth_id].image_uid);
+}
+
+void TextureCache::DetectHotPageWrites(Image& image) {
+    if (!PageManager::HotPagesEnabled() || True(image.flags & ImageFlagBits::GpuModified)) {
+        return;
+    }
+    const u64 epoch = buffer_cache.HashEpoch();
+    if (image.hot_epoch == epoch) {
+        return;
+    }
+    image.hot_epoch = epoch;
+    const VAddr begin = image.info.guest_address;
+    const VAddr end = begin + image.info.guest_size;
+    bool hot = false;
+    for (VAddr page = PageManager::GetPageAddr(begin); page < end && !hot;
+         page += PageManager::GetPageSize()) {
+        hot = PageManager::IsHotPage(page);
+    }
+    if (!hot) {
+        return;
+    }
+    const u64 hash = XXH3_64bits(std::bit_cast<const u8*>(begin), image.info.guest_size);
+    if (image.hot_hash != 0 && image.hot_hash != hash) {
+        image.flags |= ImageFlagBits::CpuDirty;
+    }
+    image.hot_hash = hash;
 }
 
 void TextureCache::RefreshImage(Image& image) {

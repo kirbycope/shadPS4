@@ -173,7 +173,8 @@ public:
     u64 lru_id{};
     u64 tick_accessed_last{};
     u64 cpu_hash{};
-    u64 hot_hash{}; ///< Full-contents hash, used while the image sits on a demoted page
+    u64 hot_hash{};  ///< Full-contents hash, used while the image sits on a demoted page
+    u64 hot_epoch{}; ///< Buffer cache hash epoch of the last hot page check
     u64 gpu_hash{};
 
     struct {

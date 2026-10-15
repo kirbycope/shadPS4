@@ -77,9 +77,13 @@ at 0x10, 0x20 and 0x30 GiB and classifies every pointer by `addr & 0xFFFFFFF0000
 else gets a null heap, which shows as reads from 0x40 and 0x50 at boot.
 `patches/make_golf_patch.py` rewrites every `movabs reg, base` to 0x80, 0x90 and 0xA0 GiB.
 
-One match is not an address. 01.17's `0x14e25cc` is `movabs rax, 0x1000000000` initialising the
-sound output table's first entry to `{id 0, format 0x10}`; moved to 0x80 the mixer rejects the
-format and renders nothing, and the game is completely silent. The generator excludes it.
+Four of the 444 matches are not addresses, and the generator excludes them. 01.17's `0x14e25cc`
+is `movabs rax, 0x1000000000` initialising the sound output table's first entry to
+`{id 0, format 0x10}`; moved to 0x80 the mixer rejects the format and renders nothing, and the game
+is completely silent. `0xaa1ec1` stores the pair `{0, 16}` into an object field, and `0x138ce2c` and
+`0x13be52b` are the 64 GiB *length* in a `{address, length, ...}` block handed to a memory-protect
+call, which happens to equal region 1's base. The other 440 were checked with a disassembler: 431
+sit in the allocator's three-way `cmp` chains and the rest are bases passed to its region setup.
 
 The XML also carries **Wait up to 5 seconds for the GPU**: the game declares a GPU hang after one
 second (`sceGnmSubmitDone`, `sceGnmDebugHardwareStatus`) and reuses command buffers the GPU is

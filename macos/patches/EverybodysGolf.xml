@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Patch>
-    <Metadata Title="Everybody's Golf" Name="macOS Memory Workaround" Note="Moves the allocator's region bases 0x10/0x20/0x30 GiB to 0x80/0x90/0xA0 GiB, out of the Apple Silicon GPU carve-out that shadPS4 cannot map under Rosetta. 443 immediates; the sound output table constant at 0x14e25cc is left alone." Author="kirbycope" PatchVer="1.0" AppVer="01.17" AppElf="eboot.bin" isEnabled="true">
+    <Metadata Title="Everybody's Golf" Name="macOS Memory Workaround" Note="Moves the allocator's region bases 0x10/0x20/0x30 GiB to 0x80/0x90/0xA0 GiB, out of the Apple Silicon GPU carve-out that shadPS4 cannot map under Rosetta. 440 immediates. Four look alike but are not bases and are left alone: the sound output table entry at 0x14e25cc, a {0, 16} field at 0xaa1ec1, and the 64 GiB region length passed to a memory-protect call at 0x138ce2c and 0x13be52b." Author="kirbycope" PatchVer="1.0" AppVer="01.17" AppElf="eboot.bin" isEnabled="true">
         <PatchList>
             <Line Type="bytes" Address="0x636f6b" Value="A0"/>
             <Line Type="bytes" Address="0x636f7d" Value="90"/>
@@ -8,7 +8,6 @@
             <Line Type="bytes" Address="0x9282cd" Value="A0"/>
             <Line Type="bytes" Address="0x9282df" Value="90"/>
             <Line Type="bytes" Address="0x9282ee" Value="80"/>
-            <Line Type="bytes" Address="0xaa1ec7" Value="80"/>
             <Line Type="bytes" Address="0xb6c938" Value="A0"/>
             <Line Type="bytes" Address="0xb6c94d" Value="90"/>
             <Line Type="bytes" Address="0xb6c95c" Value="80"/>
@@ -121,7 +120,6 @@
             <Line Type="bytes" Address="0x1388e21" Value="90"/>
             <Line Type="bytes" Address="0x1388e49" Value="A0"/>
             <Line Type="bytes" Address="0x138ce28" Value="A0"/>
-            <Line Type="bytes" Address="0x138ce32" Value="80"/>
             <Line Type="bytes" Address="0x138ef5b" Value="A0"/>
             <Line Type="bytes" Address="0x138ef6d" Value="90"/>
             <Line Type="bytes" Address="0x138ef7c" Value="80"/>
@@ -180,7 +178,6 @@
             <Line Type="bytes" Address="0x13bc63c" Value="90"/>
             <Line Type="bytes" Address="0x13bc64b" Value="80"/>
             <Line Type="bytes" Address="0x13be527" Value="A0"/>
-            <Line Type="bytes" Address="0x13be531" Value="80"/>
             <Line Type="bytes" Address="0x13d2e21" Value="80"/>
             <Line Type="bytes" Address="0x13d2eb4" Value="90"/>
             <Line Type="bytes" Address="0x13d2f41" Value="A0"/>

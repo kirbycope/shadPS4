@@ -105,6 +105,11 @@ struct PageManager::Impl {
         }
 
         Core::MemoryPermission Perms() const noexcept {
+            // A read-watched page that is not write-watched (buffers compared by content) would
+            // be write-only, which the host cannot map, so it loses all access instead.
+            if (num_read_watchers != 0) {
+                return Core::MemoryPermission::None;
+            }
             return ReadPerm() | WritePerm();
         }
 

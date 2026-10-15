@@ -14,10 +14,16 @@ import sys
 
 REMAP = {0x10: 0x80, 0x20: 0x90, 0x30: 0xA0}  # byte 4 of the 64-bit immediate
 BASE = 0x400000
-# Immediates that match the pattern but are not region bases. 01.17's 0x14e25cc is
-# `movabs rax, 0x1000000000` initialising the sound output table's first entry to {id 0, format 0x10};
-# moving it to 0x80 makes the mixer reject the format and the game renders no audio at all.
-EXCLUDE = {"01.17": {0x14E25D2}}
+# Immediates that match the pattern but are not region bases (addresses are of the patched byte).
+# Of 01.17's 444 matches, 437 are bases: 431 sit in the allocator's three-way compare chains and six
+# are heap bases passed to its region setup. The others:
+#   0x14e25cc `movabs rax, 0x1000000000` initialises the sound output table's first entry to
+#             {id 0, format 0x10}; at 0x80 the mixer rejects the format and the game is silent.
+#   0xaa1ec1  stores {0, 16} into a game object's field at +0x10 (its owner holds the same 16).
+#   0x138ce2c, 0x13be52b  are the second qword of a {addr, len, mtype, prot} block that callback
+#             0x138d5c0 hands to a memory-protect call: the region's 64 GiB *length*, which equals
+#             region 1's base. The first qword is the region address and stays patched.
+EXCLUDE = {"01.17": {0x14E25D2, 0xAA1EC7, 0x138CE32, 0x13BE531}}
 
 path, app_ver, out = sys.argv[1:4]
 d = open(path, "rb").read()

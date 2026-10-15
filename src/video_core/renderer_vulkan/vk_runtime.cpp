@@ -322,6 +322,43 @@ void Runtime::CopyImage(VideoCore::Image* src, VideoCore::Image* dst) {
     dst->flags &= ~VideoCore::ImageFlagBits::Dirty;
 }
 
+void Runtime::CopyImageRegion(VideoCore::Image* src, VideoCore::Image* dst, u32 width, u32 height) {
+    SetBackingSamples(dst, dst->info.num_samples, false);
+    SetBackingSamples(src, src->info.num_samples);
+
+    const vk::ImageCopy region{
+        .srcSubresource{
+            .aspectMask = src->aspect_mask & ~vk::ImageAspectFlagBits::eStencil,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcOffset = {0, 0, 0},
+        .dstSubresource{
+            .aspectMask = dst->aspect_mask & ~vk::ImageAspectFlagBits::eStencil,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .dstOffset = {0, 0, 0},
+        .extent = {width, height, 1},
+    };
+
+    scheduler.EndRendering();
+    bool needs_flush =
+        Transit(src, vk::ImageLayout::eTransferSrcOptimal, vk::PipelineStageFlagBits2::eCopy,
+                vk::AccessFlagBits2::eTransferRead);
+    needs_flush |= Transit(dst, vk::ImageLayout::eTransferDstOptimal,
+                           vk::PipelineStageFlagBits2::eCopy, vk::AccessFlagBits2::eTransferWrite);
+    if (needs_flush) {
+        FlushBarriers();
+    }
+    scheduler.CommandBuffer().copyImage(src->GetImage(), vk::ImageLayout::eTransferSrcOptimal,
+                                        dst->GetImage(), vk::ImageLayout::eTransferDstOptimal,
+                                        region);
+    dst->flags &= ~VideoCore::ImageFlagBits::Dirty;
+}
+
 void Runtime::CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
                                   const VideoCore::Buffer* buffer, u64 offset) {
     const u32 num_mips = std::min(src->info.resources.levels, dst->info.resources.levels);

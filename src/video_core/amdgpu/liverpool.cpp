@@ -411,7 +411,14 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::SetPredication: {
-                LOG_WARNING(Render, "Unimplemented IT_SET_PREDICATION");
+                // Occlusion queries are emulated with a counter that always reports visible
+                // pixels (see ZpassDone below), so every predicated draw would run anyway; drawing
+                // unconditionally is the same result. Games issue this per object, so say it once.
+                static bool warned = false;
+                if (!std::exchange(warned, true)) {
+                    LOG_WARNING(Render, "IT_SET_PREDICATION ignored: occlusion queries always "
+                                        "report visible");
+                }
                 break;
             }
             case PM4ItOpcode::IndexType: {
